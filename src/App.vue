@@ -4,7 +4,7 @@
 
 <script>
 import ScatterJS from "scatterjs-core";
-import { JsonRpc } from "eosjs";
+import { JsonRpc, Api } from "eosjs";
 
 export default {
   name: "App",
@@ -12,7 +12,8 @@ export default {
   data: () => ({
     network: null,
     rpc: null,
-    account: null,
+    eos: null,
+    account: {},
     currency: null,
     isConnected: false,
     isLogin: false,
@@ -61,6 +62,10 @@ export default {
     try {
       await this.connect();
       await this.login();
+      this.eos = ScatterJS.eos(this.network, Api, {
+        rpc: this.rpc,
+        beta3: true,
+      });
     } catch (error) {
       console.error(error);
     }

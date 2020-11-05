@@ -13,8 +13,8 @@ body.room {
   <v-app>
     <AppBar
       :seatData="seatData"
-      :account="account"
-      :currency="currency"
+      :account="$parent.account"
+      :currency="$parent.currency"
       :funds="funds"
     />
     <Seats :seatData="seatData" @onPurchase="onPurchase" />
@@ -32,7 +32,6 @@ import Dialog from "../components/Dialog";
 import Toast from "../components/Toast";
 import ScatterJS from "scatterjs-core";
 import ScatterEOS from "scatterjs-plugin-eosjs2";
-import { Api, JsonRpc } from "eosjs";
 
 ScatterJS.plugins(new ScatterEOS());
 
@@ -48,8 +47,6 @@ export default {
   },
 
   data: () => ({
-    account: "",
-    currency: "",
     eos: null,
     a: null,
     b: null,
@@ -156,102 +153,74 @@ export default {
   },
 
   mounted: function () {
-    var network = ScatterJS.Network.fromJson({
-      blockchain: "eos",
-      protocol: "https",
-      port: 443,
-      chainId:
-        "8a34ec7df1b8cd06ff4a8abbaa7cc50300823350cadc59ab296cb00d104d2b8f",
-      host: "eos.ahkui.com",
-    });
-    var rpc = new JsonRpc(network.fullhost());
-    ScatterJS.connect("ahkui-steve", { network }).then((connected) => {
-      if (!connected) console.error("Could not connect to Scatter.");
+    setInterval(async () => {
+      if (!this.$parent.rpc) return;
 
-      ScatterJS.login().then((id) => {
-        if (!id) console.error("錢包裡沒有任何ID");
+      this.$parent.rpc
+        .get_table_rows({
+          json: true,
+          code: "stb",
+          scope: "stb",
+          table: "jp",
+          limit: 1,
+          reverse: true,
+        })
+        .then((data) => {
+          this.funds = data["rows"][0]["funds"];
+          this.funds = this.funds.replace(" EOS", "");
+          this.funds = parseFloat(this.funds) * 10000;
+        });
 
-        this.account = ScatterJS.account("eos");
-        this.eos = ScatterJS.eos(network, Api, { rpc, beta3: true });
+      if (this.gameStatus < 4) {
+        await this.$parent.rpc
+          .get_table_rows({
+            json: true,
+            code: "stb",
+            scope: "stb",
+            table: "rounds",
+            lower_bound: parseInt(this.$route.params.id),
+            limit: 1,
+          })
+          .then(async (data) => {
+            this.gameStatus = data["rows"][0]["status"];
+            for (var i = 0; i < 10; i++) {
+              this.seatData[i]["purchased"] =
+                data["rows"][0]["seats"][i]["status"];
+            }
 
-        setInterval(async () => {
-          rpc
-            .get_currency_balance("eosio.token", this.account.name, "EOS")
-            .then((currency) => {
-              this.currency = currency[0];
-            });
-
-          rpc
-            .get_table_rows({
-              json: true,
-              code: "stb",
-              scope: "stb",
-              table: "jp",
-              limit: 1,
-              reverse: true,
-            })
-            .then((data) => {
-              this.funds = data["rows"][0]["funds"];
-              this.funds = this.funds.replace(" EOS", "");
-              this.funds = parseFloat(this.funds) * 10000;
-            });
-          if (this.gameStatus < 4) {
-            await rpc
-              .get_table_rows({
-                json: true,
-                code: "stb",
-                scope: "stb",
-                table: "rounds",
-                lower_bound: parseInt(this.$route.params.id),
-                limit: 1,
-              })
-              .then(async (data) => {
-                this.gameStatus = data["rows"][0]["status"];
-                for (var i = 0; i < 10; i++) {
-                  this.seatData[i]["purchased"] =
-                    data["rows"][0]["seats"][i]["status"];
+            await data["rows"][0]["seats"].forEach((seat, idx) => {
+              if (seat["win"] > 0) {
+                var win = seat["win"].toString(2);
+                while (win.length < 4) {
+                  win = "0" + win;
                 }
+                if (win[3] === "1") this.a = idx + 1;
 
-                await data["rows"][0]["seats"].forEach((seat, idx) => {
-                  if (seat["win"] > 0) {
-                    var win = seat["win"].toString(2);
-                    while (win.length < 4) {
-                      win = "0" + win;
-                    }
-                    if (win[3] === "1") this.a = idx + 1;
-
-                    if (win[2] === "1") this.b = idx + 1;
-                    if (win[1] === "1") {
-                      this.c = idx + 1;
-                      this.d = false;
-                    }
-                    if (win[0] === "1") {
-                      this.c = idx + 1;
-                      this.d = true;
-                    }
-                  }
-                });
-                if (
-                  this.gameStatus > 0 &&
-                  (this.a !== null ||
-                    this.b !== null ||
-                    this.c !== null ||
-                    this.d !== null)
-                ) {
-                  this.gameStatus = 4;
-                  await this.$refs.spinner.whirl(
-                    this.a,
-                    this.b,
-                    this.c,
-                    this.d
-                  );
-                  this.$refs.popup.show();
+                if (win[2] === "1") this.b = idx + 1;
+                if (win[1] === "1") {
+                  this.c = idx + 1;
+                  this.d = false;
                 }
-              });
-          }
-        }, 1000);
-      });
-    });
+                if (win[0] === "1") {
+                  this.c = idx + 1;
+                  this.d = true;
+                }
+              }
+            });
+            if (
+              this.gameStatus > 0 &&
+              (this.a !== null ||
+                this.b !== null ||
+                this.c !== null ||
+                this.d !== null)
+            ) {
+              this.gameStatus = 4;
+              await this.$refs.spinner.whirl(this.a, this.b, this.c, this.d);
+              this.$refs.popup.show();
+            }
+          });
+      }
+    }, 1000);
   },
 
   destroyed: function () {
@@ -260,7 +229,7 @@ export default {
 
   methods: {
     onPurchase(key) {
-      this.eos.transact(
+      this.$parent.eos.transact(
         {
           actions: [
             {
@@ -268,15 +237,15 @@ export default {
               name: "transfer",
               authorization: [
                 {
-                  actor: this.account.name,
-                  permission: this.account.authority,
+                  actor: this.$parent.account.name,
+                  permission: this.$parent.account.authority,
                 },
               ],
               data: {
-                from: this.account.name,
+                from: this.$parent.account.name,
                 to: "stb",
                 quantity: this.seatData[key].price,
-                memo: "Round " + this.$route.params.id + ";Seat " + key,
+                memo: `Round ${this.$route.params.id};Seat ${key}`,
               },
             },
           ],
