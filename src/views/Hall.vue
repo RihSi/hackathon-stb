@@ -46,7 +46,7 @@
                         房間 #{{ round.id }}
                         <v-btn
                           class="amber font-weight-bold"
-                          :href="'/#/room?round=' + round.id"
+                          :to="{ name: 'room', params: { id: round.id } }"
                           rounded
                           >進入房間</v-btn
                         >

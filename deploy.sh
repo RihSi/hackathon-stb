@@ -2,7 +2,7 @@
 
 set -e
 
-npm run build
+BASE_URL="/hackathon-stb/" npm run build
 
 cd dist
 git init

@@ -2,5 +2,5 @@ module.exports = {
   transpileDependencies: [
     "vuetify"
   ],
-  publicPath: process.env.NODE_ENV === 'production' ? '/hackathon-stb/' : '/'
+  publicPath: process.env.BASE_URL
 }
