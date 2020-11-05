@@ -10,10 +10,10 @@
       <v-sheet class="pa-4" dark>
         <v-avatar class="mb-4" color="grey darken-1" size="64"></v-avatar>
         <div class="font-weight-bold">
-          {{ account.name }}
+          {{ $parent.account ? $parent.account.name : "" }}
         </div>
         <div class="font-weight-bold">
-          {{ currency }}
+          {{ $parent.currency }}
         </div>
       </v-sheet>
       <v-divider></v-divider>
@@ -106,26 +106,16 @@
 </template>
 
 <script>
-import ScatterJS from "scatterjs-core";
-import { JsonRpc } from "eosjs";
-
 export default {
   name: "Hall",
-
   data: () => ({
-    account: "",
-    currency: "",
     rounds: {},
-    temp: [],
-    network: null,
-    rpc: null,
-    isConnected: false,
-    isLogin: false,
     liveRoundList: [],
   }),
+  computed: {},
   methods: {
     async fetchLiveRoom() {
-      const data = await this.rpc.get_table_rows({
+      const data = await this.$parent.rpc.get_table_rows({
         json: true,
         code: "stb",
         scope: "stb",
@@ -135,68 +125,39 @@ export default {
       this.liveRoundList = data.rows.map((x) => x.id);
     },
     async fetchRoom() {
-      this.liveRoundList.forEach((id) => {
-        this.rpc
-          .get_table_rows({
+      const data = await Promise.all(
+        this.liveRoundList.map((id) => {
+          return this.$parent.rpc.get_table_rows({
             json: true,
             code: "stb",
             scope: "stb",
             table: "rounds",
             lower_bound: id,
             limit: 1,
-          })
-          .then((data) => {
-            const round = data.rows[0];
-            this.rounds[round.id] = round;
-            this.rounds = Object.assign({}, this.rounds);
           });
-      });
-    },
-    async connect() {
-      this.isConnected = await ScatterJS.connect("ahkui-steve", {
-        network: this.network,
-      });
-      if (!this.isConnected) console.error("Could not connect to Scatter.");
-    },
-    async login() {
-      if (this.isConnected) {
-        this.isLogin = await ScatterJS.login();
-        if (this.isLogin) {
-          this.account = ScatterJS.account("eos");
-          this.balanceInterval = setInterval(this.getBalance, 1000);
-        }
-      }
-    },
-    async getBalance() {
-      this.currency = (
-        await this.rpc.get_currency_balance(
-          "eosio.token",
-          this.account.name,
-          "EOS"
-        )
-      )[0];
+        })
+      );
+      this.rounds = data.reduce((obj, item) => {
+        return {
+          ...obj,
+          [item.rows[0].id]: item.rows[0],
+        };
+      }, {});
     },
   },
 
   mounted: async function () {
-    this.network = ScatterJS.Network.fromJson({
-      blockchain: "eos",
-      protocol: "https",
-      port: 443,
-      chainId:
-        "8a34ec7df1b8cd06ff4a8abbaa7cc50300823350cadc59ab296cb00d104d2b8f",
-      host: "eos.ahkui.com",
-    });
-    this.rpc = new JsonRpc(this.network.fullhost());
-
-    try {
-      await this.connect();
-      setInterval(this.fetchLiveRoom, 1000);
-      setInterval(this.fetchRoom, 1000);
-      await this.login();
-    } catch (error) {
-      console.error(error);
+    if (this.liveInterval != undefined) {
+      clearInterval(this.liveInterval);
+      this.liveInterval = undefined;
     }
+    this.liveInterval = setInterval(this.fetchLiveRoom, 1000);
+
+    if (this.fetchRoomInterval != undefined) {
+      clearInterval(this.fetchRoomInterval);
+      this.fetchRoomInterval = undefined;
+    }
+    this.fetchRoomInterval = setInterval(this.fetchRoom, 1000);
   },
 };
 </script>
